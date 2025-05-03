@@ -1,0 +1,86 @@
+  services:
+    postgres:
+      image: postgres:15-alpine
+      ports:
+        - "5432:5432"
+      environment:
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        POSTGRES_DB: ${POSTGRES_DB}
+      command: ["postgres", "-c", "max_locks_per_transaction=128"]
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres"]
+        interval: 10s
+        timeout: 5s
+        retries: 3
+      profiles:
+        - dev
+        - prod
+      networks:
+        - app-network
+
+    backend-tj-community:
+      build:
+        context: ./backend-tj-community
+      ports:
+        - "3000:3000"
+      environment:
+        NODE_ENV: development
+        DB_HOST: postgres
+        DB_PORT: 5432
+        DB_USER: ${POSTGRES_USER}
+        DB_PASSWORD: ${POSTGRES_PASSWORD}
+        DB_NAME: ${POSTGRES_DB}
+        JWT_SECRET: ${JWT_SECRET}
+      depends_on:
+        postgres:
+          condition: service_healthy
+      volumes:
+        - ./backend-tj-community:/app
+        - ./backend-tj-community/uploads:/app/uploads
+      restart: unless-stopped
+      profiles:
+        - dev
+        - prod
+      networks:
+        - app-network
+
+    frontend-dev:
+      build:
+        context: ./frontend-tije-community
+        target: dev
+      ports:
+        - "3001:85"
+      volumes:
+        - ./frontend-tije-community:/app
+        - /app/node_modules
+      environment:
+        CHOKIDAR_USEPOLLING: 'true'
+        REACT_APP_API_URL: ${REACT_APP_API_URL}
+      depends_on:
+        - backend-tj-community
+      profiles:
+        - dev
+      networks:
+        - app-network
+
+    frontend-tije-community:
+      build:
+        context: ./frontend-tije-community
+        args:
+          REACT_APP_API_URL: ${REACT_APP_API_URL}
+      ports:
+        - "80:80"
+      environment:
+        NODE_ENV: production
+      depends_on:
+        - backend-tj-community
+      restart: unless-stopped
+      profiles:
+        - prod
+      networks:
+        - app-network
+
+  networks:
+    app-network:
+      driver: bridge
